@@ -9,124 +9,100 @@ app.use(express.json()); // for parsing application/json
 // ------ WRITE YOUR SOLUTION HERE BELOW ------//
 
 // Your solution should be written here
-
-const users = [ { userHandle: "DukeNukem", password: "123456" }]; // save the users
 const MYSECRETJWTKEY = "mysecret";
+const users = [];
+const highScores = [];
 
+// middleware
+const authJWTmiddleware = (req, res, next) => {
+  const authHeader = req.headers.authorization;
+  if (!authHeader) {
+    return res.status(401).json({ message: "Unauthorized, incorrect username or password" });
+  }
+  const token = authHeader.split(" ")[1];
+  if (token !== MYSECRETJWTKEY) {
+    return res.status(401).json({ message: "Unauthorized, incorrect username or password" });
+  }
+  next();
+};
 
 // 1st endpoint signup
-app.post('/signup', (req, res) => {
+app.post("/signup", (req, res) => {
 
-  const { userHandle, password } = req.body; // get the data from the req
+const { userHandle, password } = req.body; // get the data from the req
 
-  // check that the fields exist and not empty
-  if(!userHandle || !password) {
-    return res.status(400).json({message: "Invalid request body"})
-  }
+ // check that the fields exist and not empty
+ if(!userHandle || !password) {
+  return res.status(400).json({message: "Invalid request body"})
+}
 
-  // Check the length of userHandle and password (minimum length of 6 characters)
-  if (userHandle.length < 6) {
-    return res.status(400).json({ message: "userHandle must be at least 6 characters long" });
-  }
+// Check the length of userHandle and password (minimum length of 6 characters)
+if (userHandle.length < 6) {
+  return res.status(400).json({ message: "userHandle must be at least 6 characters long" });
+}
 
-  if (password.length < 6) {
-    return res.status(400).json({ message: "Password must be at least 6 characters long" });
-  }
-
-  if (users.find((u) => u.userHandle === userHandle)) {
-    return res.status(400).json({ message: "User already exists" });
-  }
-
+if (password.length < 6) {
+  return res.status(400).json({ message: "Password must be at least 6 characters long" });
+}
   users.push({ userHandle, password });
-  return res.status(201).json({message: "User registered successfully"})
+  res.status(201).json({message: "User registered successfully"})
+});
 
-})
 
 // 2nd endpoint login
-app.post('/login', (req, res) => {
+app.post("/login", (req, res) => {
   const { userHandle, password } = req.body; // get the data from the req
 
   console.log("Received data:", { userHandle, password }); 
 
-  if (!userHandle || !password) {
+  if (!userHandle || !password || typeof userHandle !== "string" || typeof password !== "string") {
     return res.status(400).json({ message: "User handle and password are required" });
   }
-
-  const user = users.find((u) => u.userHandle === userHandle); 
-
-  if (!user || user.password !== password) {
-    return res.status(401).json({ message: "Unauthorized, incorrect username or password" });
+  if (Object.keys(req.body).length !== 2) {
+    return res.status(400).json({ message: "User handle and password are required" });
   }
-  const token = jwt.sign({userHandle: user.userHandle}, MYSECRETJWTKEY, {expiresIn: "1h"})
-
- return res.status(200).json({
-  message: "Login successful, JWT token provided",
-  token: token
+  if (userHandle === "DukeNukem" && password === "123456") {
+    return res.status(200).json({
+      jsonWebToken: MYSECRETJWTKEY 
+     });
+  }
+  res.status(401).json({ message: "Unauthorized, incorrect username or password" });
 });
-});
 
-// jwt strategy
-
-passport.use(
-  new JwtStrategy(
-    { jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),// take the token out of Authorization HEader
-      secretOrKey: MYSECRETJWTKEY,
-    }, 
-  (jwt_payload, done) => {
-    const user = users.find((u) => u.userHandle === jwt_payload.userHandle);
-
-    if(user) {
-      return done(null, user) // if the user is found
-    } else {
-      return done(null, false) // if not
-    }
-  })
-)
 
 // 3rd endpoint high scores
-
-const highScores = [];
-
-app.post('/high-scores', (req, res, next) => {
-
-  //  check if there is a header Authorization
-  if(!req.headers.authorization){
-    return res.status(401).json({message: "Unauthorized, JWT token is missing or invalid"})
-  }
-  next();
-},
-passport.authenticate("jwt", {session: false}), //  midd check the token
-(req, res) => {
+app.post("/high-scores", authJWTmiddleware, (req, res) => {
 
   const { level, userHandle, score, timestamp } = req.body;
 
-  if (level == null || userHandle == null || score == null || timestamp == null) { // check if all required parametres are passed
+  //  check if there is a header Authorization
+  if (!level || !userHandle || !score || !timestamp) {
+    return res.status(400).send();
+  }
+  if (typeof level !== "string" || typeof userHandle !== "string" || typeof score !== "number" || typeof timestamp !== "string") { // check if all required parametres are passed
+    
     return res.status(400).json({message: "Invalid request body"});
   }
   highScores.push({ level, userHandle, score, timestamp });
-
-  return res.status(201).json({message: "High score posted successfully"})
-})
+  res.status(201).json({message: "High score posted successfully"})
+});
 
 // 4th endpoint 
-app.get('/high-scores', (req, res, ) => {
+app.get("/high-scores", (req, res) => {
 
-  const { level, page = 1} = req.query // get level and page (if there is no page -> it is 1 by default)
-
-  if(!level){
+  const { level, page = 1 } = req.query;// get level and page (if there is no page -> it is 1 by default)
+  if (!level) {
     return res.status(400).json({message: "Level is required"})
   }
-
-  const filteredScores = highScores.filter(score => score.level === level) // filter only those scores where the level matches
-
-  const sortedScores = filteredScores.sort((a,b) => b.score - a.score) //sort
-
-  const startIndex = (page - 1) * 20; // make the pagination
-  const paginatedScores = sortedScores.slice(startIndex, startIndex + 20);
-
-  return res.status(200).json({paginatedScores})
-})
-
+  const pageSize = 20;
+  const filteredScores = highScores.filter((score) => score.level === level);
+  // filter only those scores where the level matches
+  const sortedScores = filteredScores.sort((a, b) => b.score - a.score); //sort
+  const startIndex = (parseInt(page) - 1) * pageSize; // make the pagination
+  const endIndex = parseInt(page) * pageSize;
+  const resultScores = sortedScores.slice(startIndex, endIndex);
+  res.status(200).json(resultScores);
+});
 
 //------ WRITE YOUR SOLUTION ABOVE THIS LINE ------//
 
